@@ -1,58 +1,94 @@
-import numpy as np
-import pandas as pd
-from sklearn.model_selection import train_test_split
-from sklearn.ensemble import GradientBoostingClassifier
-from sklearn.metrics import accuracy_score
-import matplotlib.pyplot as plt
+from __future__ import annotations
 
-# Шаг 1: Генерация точек, напоминающих окружность
-num_points = 10000
-theta = np.linspace(0, 2 * np.pi, num_points)
-r = np.sqrt(np.random.rand(num_points))
-x1 = r * np.cos(theta)
-y1 = r * np.sin(theta)
-class_1 = np.ones(num_points)
+import argparse
+import sys
+from pathlib import Path
 
-# Шаг 2: Генерация второго ряда точек с другим центром
-x_shift, y_shift = 1.5, 1.5
-x2 = r * np.cos(theta) + x_shift
-y2 = r * np.sin(theta) + y_shift
-class_2 = np.full(num_points, 2)
+PROJECT_ROOT = Path(__file__).resolve().parent
+SRC_DIR = PROJECT_ROOT / "src"
 
-# Шаг 3: Сдвиг второго ряда точек (уже сделано в шаге 2)
+if str(SRC_DIR) not in sys.path:
+    sys.path.insert(0, str(SRC_DIR))
 
-# Шаг 4: Объединение и перемешивание точек
-x = np.concatenate((x1, x2))
-y = np.concatenate((y1, y2))
-classes = np.concatenate((class_1, class_2))
+from point_classifier.pipeline import PipelineConfig, run_pipeline
 
-data = pd.DataFrame({'x': x, 'y': y, 'class': classes})
-data = data.sample(frac=1).reset_index(drop=True)  # Перемешиваем данные
 
-# Визуализация данных
-plt.scatter(data['x'], data['y'], c=data['class'], cmap='viridis', alpha=0.5)
-plt.xlabel('x')
-plt.ylabel('y')
-plt.title('Сгенерированные точки')
-plt.show()
+def parse_args() -> argparse.Namespace:
+    """Parse command-line arguments for the training pipeline."""
+    parser = argparse.ArgumentParser(
+        description="Train a GradientBoostingClassifier on synthetic 2D point data."
+    )
+    parser.add_argument(
+        "--n-samples",
+        type=int,
+        default=10_000,
+        help="Number of points to generate per class.",
+    )
+    parser.add_argument(
+        "--radius",
+        type=float,
+        default=1.0,
+        help="Radius of each circular point cloud.",
+    )
+    parser.add_argument(
+        "--shift",
+        type=float,
+        default=1.5,
+        help="Shift applied to the second class on both axes.",
+    )
+    parser.add_argument(
+        "--test-size",
+        type=float,
+        default=0.25,
+        help="Fraction of samples reserved for the test split.",
+    )
+    parser.add_argument(
+        "--random-state",
+        type=int,
+        default=42,
+        help="Random seed used for data generation and model training.",
+    )
+    parser.add_argument(
+        "--model-path",
+        type=Path,
+        default=Path("artifacts/models/gradient_boosting_model.joblib"),
+        help="Path where the trained model will be saved.",
+    )
+    parser.add_argument(
+        "--plots-dir",
+        type=Path,
+        default=Path("artifacts/plots"),
+        help="Directory where PNG plots will be saved.",
+    )
+    parser.add_argument(
+        "--metrics-path",
+        type=Path,
+        default=Path("reports/metrics.json"),
+        help="Path where metrics.json will be saved.",
+    )
+    return parser.parse_args()
 
-# Шаг 5: Разделение на тренировочную и тестовую выборку
-X = data[['x', 'y']]
-y = data['class']
-X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.25, random_state=42)
 
-# Шаг 6: Обучение модели и проверка её работы
-model = GradientBoostingClassifier()
-model.fit(X_train, y_train)
-y_pred = model.predict(X_test)
+def main() -> None:
+    """Run the end-to-end training pipeline from the CLI."""
+    args = parse_args()
+    config = PipelineConfig(
+        n_samples=args.n_samples,
+        radius=args.radius,
+        shift=args.shift,
+        test_size=args.test_size,
+        random_state=args.random_state,
+        model_output_path=args.model_path,
+        plots_dir=args.plots_dir,
+        metrics_output_path=args.metrics_path,
+    )
+    result = run_pipeline(config)
+    print(result.summary)
+    print(f"Model saved to: {result.model_path}")
+    print(f"Metrics saved to: {result.metrics_path}")
+    print(f"Plots saved to: {result.plots_dir}")
+    print(f"Process overview saved to: {result.process_overview_path}")
 
-# Оценка точности модели
-accuracy = accuracy_score(y_test, y_pred)
-print(f'Accuracy: {accuracy * 100:.2f}%')
 
-# Визуализация результатов предсказания
-plt.scatter(X_test['x'], X_test['y'], c=y_pred, cmap='viridis', alpha=0.5)
-plt.xlabel('x')
-plt.ylabel('y')
-plt.title('Результаты предсказания')
-plt.show()
+if __name__ == "__main__":
+    main()
